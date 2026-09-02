@@ -39,6 +39,10 @@ npm test         # 규칙 테스트
 
 ## 인터넷에 배포하기 (카톡 친구가 들어오려면 필요)
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/joedaze-chanchan/omok-link)
+
+위 버튼을 누르고 GitHub 계정으로 Render에 로그인한 뒤 「Deploy Blueprint」를 누르면 `render.yaml` 설정대로 무료 웹 서비스가 만들어집니다. 저장소: https://github.com/joedaze-chanchan/omok-link
+
 서버 하나만 있으면 됩니다. 무료로 시작할 수 있는 곳 예시:
 
 - **Render**: New → Web Service → 이 폴더(`omok`)를 GitHub에 올린 뒤 연결. Build `npm install`, Start `npm start`. 포트는 `PORT` 환경변수를 자동으로 씁니다.
