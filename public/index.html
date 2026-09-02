@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>오목 한판</title>
+<meta property="og:title" content="오목 한판 두실래요?">
+<meta property="og:description" content="링크를 누르면 바로 입장. 먼저 들어온 사람이 상대가 되고, 나머지는 관전할 수 있어요.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --ground: #EEF0F2;
+    --surface: #FFFFFF;
+    --ink: #1B1F27;
+    --ink-2: #5B6270;
+    --line: #D7DBE1;
+    --accent: #2F4A8A;
+    --accent-ink: #FFFFFF;
+    --danger: #B93A2B;
+    --board: #DDAE62;
+    --board-2: #C9953F;
+    --board-line: #5A3B14;
+    --shadow: 0 1px 2px rgba(20,24,32,.08), 0 6px 20px rgba(20,24,32,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131519; --surface: #1C1F25; --ink: #ECEEF2; --ink-2: #9AA2B0; --line: #2C3038;
+      --accent: #7E9BE0; --accent-ink: #0F1420; --danger: #E06A5B;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131519; --surface: #1C1F25; --ink: #ECEEF2; --ink-2: #9AA2B0; --line: #2C3038;
+    --accent: #7E9BE0; --accent-ink: #0F1420; --danger: #E06A5B;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.5; -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  .app { max-width: 520px; margin: 0 auto; padding: 12px 12px 24px; display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 4px; }
+  header h1 { font-family: "Gowun Batang", "Nanum Myeongjo", serif; font-weight: 700; font-size: 22px; margin: 0; letter-spacing: -.01em; }
+  header .room { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+
+  .players { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  .player { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; min-height: 58px; position: relative; transition: border-color .2s, box-shadow .2s; }
+  .player.turn { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .player.me::after { content: "나"; position: absolute; top: -8px; right: 10px; font-size: 11px; background: var(--accent); color: var(--accent-ink); padding: 0 7px; border-radius: 999px; line-height: 16px; }
+  .stone { width: 26px; height: 26px; border-radius: 50%; flex: none; box-shadow: inset -3px -3px 6px rgba(0,0,0,.35), 1px 1px 2px rgba(0,0,0,.3); }
+  .stone.black { background: radial-gradient(circle at 35% 30%, #5b5b5b, #0b0b0b 70%); }
+  .stone.white { background: radial-gradient(circle at 35% 30%, #ffffff, #d5d5d5 75%); }
+  .player .meta { min-width: 0; }
+  .player .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player .sub { font-size: 12px; color: var(--ink-2); }
+  .player.empty .name { color: var(--ink-2); font-weight: 500; }
+  .player .dot { width: 7px; height: 7px; border-radius: 50%; background: #3BB273; display: inline-block; margin-right: 4px; vertical-align: 1px; }
+  .player .dot.off { background: var(--line); }
+  .vs { font-family: "Gowun Batang", serif; color: var(--ink-2); font-size: 14px; }
+
+  .status { text-align: center; font-size: 14px; color: var(--ink-2); min-height: 22px; padding: 0 4px; }
+  .status strong { color: var(--ink); }
+  .status.win { color: var(--ink); font-weight: 700; font-size: 16px; }
+
+  .board-wrap { position: relative; width: 100%; aspect-ratio: 1; border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; background: var(--board); }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .actions .wide { grid-column: 1 / -1; }
+  button { font: inherit; font-weight: 700; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: transform .05s, background .15s; }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  button.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  button[disabled] { opacity: .45; cursor: default; }
+  button[hidden] { display: none; }
+
+  .hint { font-size: 12px; color: var(--ink-2); text-align: center; }
+
+  .watchers { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .watchers[hidden] { display: none; }
+  .watchers .title { font-size: 12px; color: var(--ink-2); letter-spacing: .04em; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--ground); border: 1px solid var(--line); }
+  .chip.hand { border-color: var(--accent); color: var(--accent); }
+  .chip.me { font-weight: 700; }
+
+  .pick { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; }
+  .pick button { display: flex; justify-content: space-between; align-items: center; text-align: left; font-weight: 500; }
+  .pick button .tag { font-size: 12px; color: var(--accent); font-weight: 700; }
+  .modal .row { display: flex; gap: 8px; }
+  .modal .row button { flex: 1; }
+
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--ground); padding: 10px 16px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 90vw; text-align: center; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .modal { position: fixed; inset: 0; background: rgba(10,12,16,.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .modal[hidden] { display: none; }
+  .modal .card { background: var(--surface); border-radius: 16px; padding: 22px 20px; width: 100%; max-width: 340px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px; }
+  .modal h2 { font-family: "Gowun Batang", serif; margin: 0; font-size: 20px; }
+  .modal p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .modal input { font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ground); color: var(--ink); }
+  .modal input:focus { outline: 2px solid var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>오목 한판</h1>
+    <div class="room">방 <span id="roomId">—</span></div>
+  </header>
+
+  <div class="players">
+    <div class="player empty" id="p1"><div class="stone black"></div><div class="meta"><div class="name">기다리는 중…</div><div class="sub">흑 · 선공</div></div></div>
+    <div class="vs">對</div>
+    <div class="player empty" id="p2"><div class="stone white"></div><div class="meta"><div class="name">기다리는 중…</div><div class="sub">백</div></div></div>
+  </div>
+
+  <div class="status" id="status">서버에 연결하는 중…</div>
+
+  <div class="watchers" id="watchers" hidden>
+    <div class="title">관전 <span id="watchCount">0</span>명</div>
+    <div class="chips" id="watchChips"></div>
+  </div>
+
+  <div class="board-wrap"><canvas id="board" aria-label="오목판"></canvas></div>
+
+  <div class="actions">
+    <button class="primary wide" id="shareBtn">카톡으로 상대 초대하기</button>
+    <button class="wide" id="botBtn" hidden>컴퓨터와 두기 (테스트)</button>
+    <button id="resignBtn" class="danger" hidden>기권</button>
+    <button id="rematchBtn" class="primary" hidden>다시 한판</button>
+    <button id="inviteBtn" hidden>관전자와 두기</button>
+    <button id="leaveBtn" class="danger" hidden>나가기</button>
+    <button id="takeSeatBtn" class="primary wide" hidden>오목 두기</button>
+    <button id="handBtn" class="wide" hidden>다음 판 두고 싶어요 ✋</button>
+    <button id="newRoomBtn" class="wide">새 대국 링크 만들기</button>
+  </div>
+  <div class="hint" id="hint">돌을 놓을 자리를 한 번 누르면 미리 보이고, 같은 자리를 다시 누르면 확정돼요.</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal" id="pickModal" hidden>
+  <div class="card">
+    <h2>누구와 둘까요?</h2>
+    <p>초대를 수락하면 그 사람이 상대 자리에 앉고(선공), 지금 상대는 관전으로 넘어가요.</p>
+    <div class="pick" id="pickList"></div>
+    <button type="button" id="pickClose">닫기</button>
+  </div>
+</div>
+
+<div class="modal" id="inviteModal" hidden>
+  <div class="card">
+    <h2 id="inviteTitle">대국 신청</h2>
+    <p id="inviteText"></p>
+    <div class="row" id="inviteAnswer"><button type="button" id="inviteNo">거절</button><button type="button" class="primary" id="inviteYes">수락하고 두기</button></div>
+    <button type="button" id="inviteCancel" hidden>초대 취소</button>
+  </div>
+</div>
+
+<div class="modal" id="askModal" hidden>
+  <div class="card">
+    <h2 id="askTitle">확인</h2>
+    <p id="askText"></p>
+    <div class="row"><button type="button" id="askNo">아니요</button><button type="button" class="primary danger" id="askYes">네</button></div>
+  </div>
+</div>
+
+<div class="modal" id="nameModal" hidden>
+  <form class="card" id="nameForm">
+    <h2>어떻게 불러드릴까요?</h2>
+    <p>상대와 관전자에게 보이는 이름이에요.</p>
+    <input id="nameInput" maxlength="12" placeholder="닉네임" autocomplete="nickname" required>
+    <button class="primary" type="submit">입장하기</button>
+  </form>
+</div>
+
+<script src="/rules.js"></script>
+<script>
+(function () {
+  const R = window.OmokRules;
+  const SIZE = R.SIZE;
+  const qs = new URLSearchParams(location.search);
+
+  // ----- 식별자 -----
+  const roomId = location.pathname.split('/').filter(Boolean)[1] || '';
+  function stored(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; } }
+  function store(key, v) { try { localStorage.setItem(key, v); } catch (e) {} }
+  let clientId = qs.get('cid') || stored('omok.cid', '');
+  if (!clientId) { clientId = 'c' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); store('omok.cid', clientId); }
+  let myName = qs.get('name') || stored('omok.name', '');
+
+  // ----- DOM -----
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('board'), ctx = canvas.getContext('2d');
+  const statusEl = $('status'), toastEl = $('toast');
+  const shareBtn = $('shareBtn'), resignBtn = $('resignBtn'), rematchBtn = $('rematchBtn'), newRoomBtn = $('newRoomBtn');
+  const inviteBtn = $('inviteBtn'), leaveBtn = $('leaveBtn'), takeSeatBtn = $('takeSeatBtn'), handBtn = $('handBtn'), botBtn = $('botBtn');
+  $('roomId').textContent = roomId;
+  document.title = '오목 한판 · ' + roomId;
+
+  // ----- 상태 -----
+  let state = null;      // 서버가 보내는 방 상태
+  let role = null;       // 'player' | 'spectator'
+  let myColor = null;
+  let ghost = null;      // {x, y} 미리 놓아본 자리
+  let forbidden = [];    // 흑 차례에 표시할 금수
+  let ws = null, retry = 0, reconnectTimer = null;
+  // 화면으로 돌아왔을 때 끊겨 있으면 바로 다시 붙는다 (앱 전환 뒤 대기 시간 없이)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && ws && ws.readyState !== 1 && ws.readyState !== 0) { clearTimeout(reconnectTimer); retry = 0; connect(); }
+  });
+
+  // ----- 연결 -----
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(proto + location.host + '/ws');
+    ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ type: 'join', room: roomId, clientId, name: myName })); };
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'state') { state = msg; onState(); }
+      else if (msg.type === 'notice') { toast(msg.message, 4000); }
+      else if (msg.type === 'error') { toast(msg.message); ghost = null; draw(); }
+    };
+    ws.onclose = () => { setStatus('연결이 끊겼어요. 다시 연결하는 중…'); reconnectTimer = setTimeout(connect, Math.min(8000, 500 * Math.pow(2, retry++))); };
+  }
+
+  function sendMsg(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+  // ----- 상태 반영 -----
+  let prevRole = null;
+  function onState() {
+    const me = state.players.find(p => p.id === clientId);
+    myColor = me ? me.color : null;
+    role = me ? 'player' : 'spectator';
+    if (prevRole === 'spectator' && role === 'player') toast('자리에 앉았어요. ' + (state.status === 'playing' ? '대국 시작!' : '상대를 기다리는 중이에요.'), 3000);
+    prevRole = role;
+    renderPlayers();
+    renderStatus();
+    renderActions();
+    renderWatchers();
+    renderInvite();
+    forbidden = (state.status === 'playing' && state.turn === R.BLACK) ? R.forbiddenPoints(state.board) : [];
+    ghost = null;
+    draw();
+  }
+
+  function renderPlayers() {
+    const black = state.players.find(p => p.color === R.BLACK);
+    const white = state.players.find(p => p.color === R.WHITE);
+    fillPlayer($('p1'), black, '흑 · 선공', R.BLACK);
+    fillPlayer($('p2'), white, '백', R.WHITE);
+  }
+  function fillPlayer(el, p, label, color) {
+    el.classList.toggle('empty', !p);
+    el.classList.toggle('me', !!p && p.id === clientId);
+    el.classList.toggle('turn', state.status === 'playing' && state.turn === color);
+    el.querySelector('.name').textContent = p ? (p.bot ? p.name + ' 🤖' : p.name) : '기다리는 중…';
+    el.querySelector('.sub').innerHTML = p ? '<span class="dot ' + (p.online ? '' : 'off') + '"></span>' + label + (p.online ? '' : ' · 자리 비움') : label;
+  }
+
+  function colorName(c) { return c === R.BLACK ? '흑' : '백'; }
+  function playerName(c) { const p = state.players.find(p => p.color === c); return p ? escapeHtml(p.name) : colorName(c); }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+
+  function renderStatus() {
+    statusEl.classList.remove('win');
+    const spec = state.spectators.length > 0 ? ' · 관전 ' + state.spectators.length + '명' : '';
+    if (state.status === 'waiting') {
+      if (state.players.length === 0) setStatus('두 자리가 모두 비어 있어요. 「오목 두기」를 누르면 자리에 앉아 상대를 기다릴 수 있어요.');
+      else setStatus(role === 'player' ? '아래 버튼으로 링크를 보내 상대를 초대하세요. 먼저 들어온 사람이 상대가 돼요.' : '한 자리가 비어 있어요. 「오목 두기」를 누르면 바로 대국이 시작돼요.' + spec);
+      return;
+    }
+    if (state.status === 'playing') {
+      const mine = myColor !== null && state.turn === myColor;
+      const who = mine ? '<strong>내 차례</strong>' : '<strong>' + playerName(state.turn) + '</strong>(' + colorName(state.turn) + ') 차례';
+      setStatus((state.moves.length + 1) + '수 · ' + who + (role === 'spectator' ? ' · 관전 중' : '') + spec, true);
+      return;
+    }
+    statusEl.classList.add('win');
+    if (state.endReason === 'draw') { setStatus('무승부예요.'); return; }
+    const w = state.winner;
+    const how = state.endReason === 'resign' ? '기권승' : '5목 완성';
+    const meWon = myColor !== null && myColor === w;
+    setStatus(playerName(w) + '(' + colorName(w) + ') ' + how + (myColor !== null ? (meWon ? ' · 이겼어요!' : ' · 졌어요') : '') + spec, true);
+  }
+
+  function setStatus(text, html) { if (html) statusEl.innerHTML = text; else statusEl.textContent = text; }
+
+  function renderActions() {
+    const isPlayer = myColor !== null;
+    shareBtn.hidden = !(state.status === 'waiting');
+    botBtn.hidden = !(isPlayer && state.status === 'waiting' && state.openSeat);
+    resignBtn.hidden = !(isPlayer && state.status === 'playing');
+    rematchBtn.hidden = !(isPlayer && state.status === 'ended');
+    if (!rematchBtn.hidden) {
+      const iAsked = state.rematch.includes(clientId);
+      const otherAsked = state.rematch.some(id => id !== clientId);
+      rematchBtn.disabled = iAsked;
+      rematchBtn.textContent = iAsked ? '상대 응답 기다리는 중…' : (otherAsked ? '상대가 다시 하자고 해요 · 수락' : '다시 한판 (색 바꿔서)');
+    }
+    const quiet = state.status !== 'playing';
+    inviteBtn.hidden = !(isPlayer && quiet && state.spectators.length > 0);
+    leaveBtn.hidden = !(isPlayer && quiet);
+    takeSeatBtn.hidden = !(!isPlayer && state.openSeat);
+    handBtn.hidden = !(!isPlayer && !state.openSeat);
+    const myHand = state.spectators.some(sp => sp.id === clientId && sp.hand);
+    handBtn.textContent = myHand ? '손 내리기 (다음 판 두고 싶어요 ✋)' : '다음 판 두고 싶어요 ✋';
+    handBtn.classList.toggle('primary', myHand);
+    $('hint').textContent = isPlayer
+      ? '돌을 놓을 자리를 한 번 누르면 미리 보이고, 같은 자리를 다시 누르면 확정돼요. 흑 차례에 ✕ 표시는 금수(3-3, 4-4, 장목)예요.'
+      : (role === 'spectator' ? '관전 중이에요. 손을 들어 두고 싶다고 알리면 대국이 끝난 뒤 두던 사람이 초대할 수 있어요. 새 대국 링크를 만들면 그곳에서 먼저 들어온 사람과 둘 수 있어요.' : '');
+  }
+
+  function renderWatchers() {
+    const box = $('watchers');
+    box.hidden = state.spectators.length === 0;
+    $('watchCount').textContent = state.spectators.length;
+    $('watchChips').innerHTML = state.spectators.map(sp =>
+      '<span class="chip' + (sp.hand ? ' hand' : '') + (sp.id === clientId ? ' me' : '') + '">' + escapeHtml(sp.name) + (sp.hand ? ' ✋' : '') + '</span>').join('');
+  }
+
+  function renderInvite() {
+    const inv = state.invite;
+    const modal = $('inviteModal');
+    if (!inv || (inv.to !== clientId && inv.from !== clientId)) { modal.hidden = true; return; }
+    modal.hidden = false;
+    const forMe = inv.to === clientId;
+    $('inviteAnswer').hidden = !forMe;
+    $('inviteCancel').hidden = forMe;
+    $('inviteTitle').textContent = forMe ? inv.fromName + '님의 대국 신청' : '초대 보냄';
+    $('inviteText').textContent = forMe
+      ? '수락하면 상대 자리에 앉아 흑(선공)으로 바로 시작해요.'
+      : inv.toName + '님의 응답을 기다리는 중이에요…';
+  }
+
+  function openPicker() {
+    const list = $('pickList');
+    list.innerHTML = '';
+    for (const sp of state.spectators) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span>' + escapeHtml(sp.name) + '</span>' + (sp.hand ? '<span class="tag">✋ 두고 싶어요</span>' : '');
+      b.addEventListener('click', () => { sendMsg({ type: 'invite', to: sp.id }); $('pickModal').hidden = true; });
+      list.appendChild(b);
+    }
+    $('pickModal').hidden = false;
+  }
+
+  botBtn.addEventListener('click', () => sendMsg({ type: 'addBot' }));
+  inviteBtn.addEventListener('click', openPicker);
+  $('pickClose').addEventListener('click', () => { $('pickModal').hidden = true; });
+  leaveBtn.addEventListener('click', async () => { if (await ask('나가기', '나가면 관전자가 되고, 다른 사람이 그 자리에서 둘 수 있어요. 나갈까요?')) sendMsg({ type: 'leaveSeat' }); });
+  takeSeatBtn.addEventListener('click', () => sendMsg({ type: 'takeSeat' }));
+  handBtn.addEventListener('click', () => { const up = !state.spectators.some(sp => sp.id === clientId && sp.hand); sendMsg({ type: 'hand', up: up }); });
+  $('inviteYes').addEventListener('click', () => sendMsg({ type: 'inviteReply', accept: true }));
+  $('inviteNo').addEventListener('click', () => sendMsg({ type: 'inviteReply', accept: false }));
+  $('inviteCancel').addEventListener('click', () => sendMsg({ type: 'inviteCancel' }));
+
+  // ----- 판 그리기 -----
+  let cell = 0, pad = 0, px = 0;
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    px = Math.floor(rect.width);
+    canvas.width = px * dpr; canvas.height = px * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cell = px / (SIZE + 1);
+    pad = cell;
+    draw();
+  }
+  function cx(x) { return pad + x * cell; }
+  function cy(y) { return pad + y * cell; }
+
+  function draw() {
+    if (!px) return;
+    const css = getComputedStyle(document.documentElement);
+    const wood = css.getPropertyValue('--board').trim(), wood2 = css.getPropertyValue('--board-2').trim(), lineC = css.getPropertyValue('--board-line').trim();
+    // 나뭇결 느낌의 배경
+    const g = ctx.createLinearGradient(0, 0, px, px);
+    g.addColorStop(0, wood); g.addColorStop(1, wood2);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, px, px);
+    ctx.save(); ctx.globalAlpha = 0.08; ctx.strokeStyle = '#3a2408'; ctx.lineWidth = 1;
+    for (let i = 0; i < 40; i++) { const y = (i * 37 + 11) % px; ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(px * .3, y + 6, px * .6, y - 6, px, y + 2); ctx.stroke(); }
+    ctx.restore();
+
+    // 선
+    ctx.strokeStyle = lineC; ctx.lineWidth = 1;
+    for (let i = 0; i < SIZE; i++) {
+      ctx.beginPath(); ctx.moveTo(cx(0), cy(i)); ctx.lineTo(cx(SIZE - 1), cy(i)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx(i), cy(0)); ctx.lineTo(cx(i), cy(SIZE - 1)); ctx.stroke();
+    }
+    ctx.lineWidth = 2; ctx.strokeRect(cx(0), cy(0), cell * (SIZE - 1), cell * (SIZE - 1));
+    // 화점
+    ctx.fillStyle = lineC;
+    for (const pt of [[3, 3], [11, 3], [7, 7], [3, 11], [11, 11]]) { ctx.beginPath(); ctx.arc(cx(pt[0]), cy(pt[1]), cell * .11, 0, Math.PI * 2); ctx.fill(); }
+
+    if (!state) return;
+    const rad = cell * 0.46;
+    // 돌
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+      const v = state.board[y][x];
+      if (v) drawStone(cx(x), cy(y), rad, v, 1);
+    }
+    // 승리 선
+    if (state.winLine) {
+      ctx.save(); ctx.strokeStyle = '#E4482F'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      for (const pt of state.winLine) { ctx.beginPath(); ctx.arc(cx(pt[0]), cy(pt[1]), rad + 2, 0, Math.PI * 2); ctx.stroke(); }
+      const pts = state.winLine.slice().sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+      ctx.globalAlpha = 0.9; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(cx(pts[0][0]), cy(pts[0][1])); ctx.lineTo(cx(pts[pts.length - 1][0]), cy(pts[pts.length - 1][1])); ctx.stroke(); ctx.restore();
+    }
+    // 마지막 수 표시
+    const last = state.moves[state.moves.length - 1];
+    if (last) { ctx.fillStyle = last.color === R.BLACK ? '#ff6b4a' : '#d9341a'; ctx.beginPath(); ctx.arc(cx(last.x), cy(last.y), rad * .28, 0, Math.PI * 2); ctx.fill(); }
+    // 금수 표시 (흑 차례일 때 모두에게)
+    if (forbidden.length) {
+      ctx.save(); ctx.strokeStyle = '#C8302A'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      const s = cell * .22;
+      for (const f of forbidden) { const X = cx(f.x), Y = cy(f.y); ctx.beginPath(); ctx.moveTo(X - s, Y - s); ctx.lineTo(X + s, Y + s); ctx.moveTo(X + s, Y - s); ctx.lineTo(X - s, Y + s); ctx.stroke(); }
+      ctx.restore();
+    }
+    // 미리 놓아본 돌
+    if (ghost) {
+      drawStone(cx(ghost.x), cy(ghost.y), rad, myColor, 0.55);
+      ctx.save(); ctx.strokeStyle = '#2F4A8A'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.arc(cx(ghost.x), cy(ghost.y), rad + 3, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    }
+  }
+
+  function drawStone(x, y, r, color, alpha) {
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 2;
+    const gr = ctx.createRadialGradient(x - r * .35, y - r * .4, r * .1, x, y, r);
+    if (color === R.BLACK) { gr.addColorStop(0, '#6a6a6a'); gr.addColorStop(1, '#070707'); }
+    else { gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#cfcfcf'); }
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // ----- 입력 -----
+  function pointToCell(ev) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = (ev.clientX - rect.left) * (px / rect.width), sy = (ev.clientY - rect.top) * (px / rect.height);
+    const x = Math.round((sx - pad) / cell), y = Math.round((sy - pad) / cell);
+    if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return null;
+    return { x: x, y: y };
+  }
+  canvas.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    if (!state || state.status !== 'playing' || myColor === null || state.turn !== myColor) return;
+    const p = pointToCell(ev);
+    if (!p || state.board[p.y][p.x] !== R.EMPTY) { ghost = null; draw(); return; }
+    if (ghost && ghost.x === p.x && ghost.y === p.y) {
+      const f = R.forbidden(state.board, p.x, p.y, myColor);
+      if (f) { toast({ '33': '3-3 금수 자리예요.', '44': '4-4 금수 자리예요.', '6': '장목(6목) 금수 자리예요.' }[f]); ghost = null; draw(); return; }
+      sendMsg({ type: 'move', x: p.x, y: p.y });
+      ghost = null; draw();
+    } else { ghost = p; draw(); }
+  });
+
+  resignBtn.addEventListener('click', async () => { if (await ask('기권', '정말 기권할까요? 상대의 승리로 기록돼요.')) sendMsg({ type: 'resign' }); });
+  rematchBtn.addEventListener('click', () => sendMsg({ type: 'rematch' }));
+  newRoomBtn.addEventListener('click', () => { location.href = '/'; });
+
+  const shareUrl = location.origin + '/r/' + roomId;
+  shareBtn.addEventListener('click', async () => {
+    const text = (myName || '친구') + '님이 오목 한판을 신청했어요. 링크를 누르면 바로 시작! 먼저 들어온 사람이 상대가 돼요.';
+    if (navigator.share) {
+      try { await navigator.share({ title: '오목 한판', text: text, url: shareUrl }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(shareUrl); toast('링크를 복사했어요. 카톡 대화창에 붙여넣기 하세요.'); }
+    catch (e) { prompt('이 링크를 복사해서 카톡으로 보내세요', shareUrl); }
+  });
+
+  // 브라우저 기본 confirm()은 카톡 등 앱 내 브라우저에서 막히는 경우가 있어 화면 안 모달로 묻는다
+  let askResolve = null;
+  function ask(title, text) {
+    return new Promise((resolve) => {
+      askResolve = resolve;
+      $('askTitle').textContent = title; $('askText').textContent = text;
+      $('askModal').hidden = false;
+    });
+  }
+  $('askYes').addEventListener('click', () => { $('askModal').hidden = true; if (askResolve) askResolve(true); askResolve = null; });
+  $('askNo').addEventListener('click', () => { $('askModal').hidden = true; if (askResolve) askResolve(false); askResolve = null; });
+
+  let toastTimer;
+  function toast(text, ms) { toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 2400); }
+
+  // ----- 닉네임 → 접속 -----
+  function start() { $('nameModal').hidden = true; connect(); }
+  $('nameForm').addEventListener('submit', (ev) => { ev.preventDefault(); myName = $('nameInput').value.trim().slice(0, 12) || '익명'; store('omok.name', myName); start(); });
+
+  window.addEventListener('resize', resize);
+  resize();
+  if (!roomId) { setStatus('잘못된 링크예요.'); return; }
+  if (myName) start(); else { $('nameModal').hidden = false; setTimeout(() => $('nameInput').focus(), 50); }
+})();
+</script>
+</body>
+</html>

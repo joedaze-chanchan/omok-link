@@ -1,0 +1,15 @@
+{
+  "name": "omok-link",
+  "version": "1.0.0",
+  "description": "카톡 링크로 초대해서 두는 실시간 오목 (렌주룰, 15x15)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
