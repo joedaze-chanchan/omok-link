@@ -47,19 +47,20 @@ function candidates(board) {
   return [...set].map(k => ({ x: k % SIZE, y: Math.floor(k / SIZE) }));
 }
 
-function chooseMove(board, color) {
+function chooseMove(board, color, opts) {
+  opts = opts || Rules.DEFAULT_RULES;
   const opp = color === BLACK ? WHITE : BLACK;
-  const cands = candidates(board).filter(c => !Rules.forbidden(board, c.x, c.y, color));
+  const cands = candidates(board).filter(c => !Rules.forbidden(board, c.x, c.y, color, opts));
   if (cands.length === 0) {
     // 후보가 전부 금수면 아무 빈칸이나 (금수 아닌 곳)
     for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++)
-      if (board[y][x] === EMPTY && !Rules.forbidden(board, x, y, color)) return { x, y };
+      if (board[y][x] === EMPTY && !Rules.forbidden(board, x, y, color, opts)) return { x, y };
     return null;
   }
   // 1) 즉시 승리
-  for (const c of cands) if (Rules.checkWin(board, c.x, c.y, color)) return c;
+  for (const c of cands) if (Rules.checkWin(board, c.x, c.y, color, opts)) return c;
   // 2) 상대 즉시 승리 차단
-  for (const c of cands) if (Rules.checkWin(board, c.x, c.y, opp) && !Rules.forbidden(board, c.x, c.y, opp)) return c;
+  for (const c of cands) if (Rules.checkWin(board, c.x, c.y, opp, opts) && !Rules.forbidden(board, c.x, c.y, opp, opts)) return c;
   // 3) 점수
   let best = null, bestScore = -Infinity;
   for (const c of cands) {

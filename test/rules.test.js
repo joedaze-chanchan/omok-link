@@ -123,6 +123,17 @@ test('a normal move is not forbidden and white is never forbidden', () => {
   assert.strictEqual(R.forbidden(w, 3, 0, W), null);
 });
 
+test('simple preset: 4-4 and overline allowed, 3-3 still forbidden, black wins with 6', () => {
+  const S = R.PRESETS.simple;
+  const b44 = boardFrom(['.......', '.X.....', '.X.....', '.X.....', '..XXX..']);
+  assert.strictEqual(R.forbidden(b44, 1, 4, B, S), null);
+  const b6 = boardFrom(['XXX.XX']);
+  assert.strictEqual(R.forbidden(b6, 3, 0, B, S), null);
+  assert.ok(R.checkWin(b6, 3, 0, B, S), 'six in a row wins for black under simple rules');
+  const b33 = boardFrom(['.......', '.......', '.......', '..XX...', '.......', '.X.....', '.X.....']);
+  assert.strictEqual(R.forbidden(b33, 1, 3, B, S), '33');
+});
+
 test('three with an opponent stone blocking is not open (no 3-3)', () => {
   const b = boardFrom([
     'O......',

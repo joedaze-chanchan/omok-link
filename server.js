@@ -55,7 +55,7 @@ function loadRooms() {
     if (!fs.existsSync(DATA_FILE)) return;
     const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     for (const r of raw.rooms || []) {
-      rooms.set(r.id, { id: r.id, players: r.players || [], sockets: new Set(), game: r.game, rematch: new Set(r.rematch || []), hands: new Set(), invite: null, touched: r.touched || Date.now(), gameNo: r.gameNo || 1, everFull: !!r.everFull });
+      rooms.set(r.id, { id: r.id, players: r.players || [], sockets: new Set(), game: r.game, rematch: new Set(r.rematch || []), hands: new Set(), invite: null, touched: r.touched || Date.now(), gameNo: r.gameNo || 1, everFull: !!r.everFull, rules: r.rules || 'simple' });
     }
     log('저장된 방 ' + rooms.size + '개 복구');
   } catch (e) { log('방 복구 실패:', e.message); }
@@ -68,7 +68,7 @@ function saveRooms() {
     saveTimer = null;
     try {
       fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-      const out = { rooms: [...rooms.values()].map(r => ({ id: r.id, players: r.players, game: r.game, rematch: [...r.rematch], touched: r.touched, gameNo: r.gameNo, everFull: !!r.everFull })) };
+      const out = { rooms: [...rooms.values()].map(r => ({ id: r.id, players: r.players, game: r.game, rematch: [...r.rematch], touched: r.touched, gameNo: r.gameNo, everFull: !!r.everFull, rules: r.rules })) };
       fs.writeFileSync(DATA_FILE, JSON.stringify(out));
     } catch (e) { log('방 저장 실패:', e.message); }
   }, 300);
@@ -99,7 +99,7 @@ function newGame(blackId) {
 function getRoom(id) {
   let room = rooms.get(id);
   if (!room) {
-    room = { id, players: [], sockets: new Set(), game: newGame(null), rematch: new Set(), hands: new Set(), invite: null, touched: Date.now(), gameNo: 1 };
+    room = { id, players: [], sockets: new Set(), game: newGame(null), rematch: new Set(), hands: new Set(), invite: null, touched: Date.now(), gameNo: 1, rules: 'simple' };
     rooms.set(id, room);
   }
   room.touched = Date.now();
@@ -123,6 +123,7 @@ function publicState(room) {
     type: 'state',
     room: room.id,
     gameNo: room.gameNo,
+    rules: room.rules,
     players: room.players.map(p => ({ id: p.id, name: p.name, bot: p.id === BOT_ID, color: g.blackId === p.id ? Rules.BLACK : Rules.WHITE, online: p.id === BOT_ID || online.has(p.id) })),
     spectators,
     openSeat: room.players.length < 2,
@@ -156,7 +157,7 @@ function scheduleBot(room) {
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
     if (room.game !== gameRef || gameRef.status !== 'playing' || gameRef.turn !== botColor) return;
-    const m = AI.chooseMove(gameRef.board, botColor);
+    const m = AI.chooseMove(gameRef.board, botColor, Rules.preset(room.rules));
     if (!m) return;
     applyMove(room, botColor, m.x, m.y);
     broadcast(room);
@@ -170,9 +171,10 @@ function applyMove(room, color, x, y) {
   if (g.turn !== color) return '상대 차례예요.';
   if (x < 0 || y < 0 || x >= Rules.SIZE || y >= Rules.SIZE) return '판 밖이에요.';
   if (g.board[y][x] !== Rules.EMPTY) return '이미 돌이 있는 자리예요.';
-  const f = Rules.forbidden(g.board, x, y, color);
+  const opts = Rules.preset(room.rules);
+  const f = Rules.forbidden(g.board, x, y, color, opts);
   if (f) return { '33': '3-3 금수예요.', '44': '4-4 금수예요.', '6': '장목(6목) 금수예요.' }[f];
-  const win = Rules.checkWin(g.board, x, y, color);
+  const win = Rules.checkWin(g.board, x, y, color, opts);
   g.board[y][x] = color;
   g.moves.push({ x, y, color });
   if (win) {
@@ -294,6 +296,15 @@ function handle(ws, msg) {
   }
 
   const quiet = g.status !== 'playing'; // 대국 중이 아닐 때만 자리 이동 가능
+
+  if (msg.type === 'setRules') {
+    if (myColor === null) return send(ws, { type: 'error', message: '자리에 앉은 사람만 규칙을 바꿀 수 있어요.' });
+    if (g.status === 'playing') return send(ws, { type: 'error', message: '대국 중에는 규칙을 바꿀 수 없어요.' });
+    if (!Rules.PRESETS[msg.rules]) return;
+    room.rules = msg.rules;
+    broadcast(room);
+    return;
+  }
 
   if (msg.type === 'addBot') {
     if (myColor === null) return send(ws, { type: 'error', message: '자리에 앉은 사람만 컴퓨터를 부를 수 있어요.' });

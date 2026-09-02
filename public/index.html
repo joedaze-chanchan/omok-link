@@ -66,6 +66,9 @@
   .vs { font-family: "Gowun Batang", serif; color: var(--ink-2); font-size: 14px; }
 
   .status { text-align: center; font-size: 14px; color: var(--ink-2); min-height: 22px; padding: 0 4px; }
+  .rules { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .rules select { font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+  .rules .fixed { font-weight: 700; color: var(--ink); }
   .status strong { color: var(--ink); }
   .status.win { color: var(--ink); font-weight: 700; font-size: 16px; }
 
@@ -127,6 +130,12 @@
   </div>
 
   <div class="status" id="status">서버에 연결하는 중…</div>
+
+  <div class="rules" id="rulesRow" hidden>
+    <span>규칙</span>
+    <select id="rulesSel"></select>
+    <span class="fixed" id="rulesFixed"></span>
+  </div>
 
   <div class="watchers" id="watchers" hidden>
     <div class="title">관전 <span id="watchCount">0</span>명</div>
@@ -240,6 +249,19 @@
 
   // ----- 상태 반영 -----
   let prevRole = null;
+  function rulesOpts() { return R.preset(state ? state.rules : 'simple'); }
+
+  function renderRules() {
+    const row = $('rulesRow'), sel = $('rulesSel'), fixed = $('rulesFixed');
+    row.hidden = false;
+    const canEdit = myColor !== null && state.status !== 'playing';
+    sel.hidden = !canEdit; fixed.hidden = canEdit;
+    if (!sel.options.length) for (const k of Object.keys(R.PRESETS)) { const o = document.createElement('option'); o.value = k; o.textContent = R.PRESETS[k].name + ' · ' + R.PRESETS[k].desc; sel.appendChild(o); }
+    sel.value = state.rules;
+    fixed.textContent = rulesOpts().name + ' · ' + rulesOpts().desc;
+  }
+  $('rulesSel').addEventListener('change', () => sendMsg({ type: 'setRules', rules: $('rulesSel').value }));
+
   function onState() {
     const me = state.players.find(p => p.id === clientId);
     myColor = me ? me.color : null;
@@ -251,7 +273,8 @@
     renderActions();
     renderWatchers();
     renderInvite();
-    forbidden = (state.status === 'playing' && state.turn === R.BLACK) ? R.forbiddenPoints(state.board) : [];
+    renderRules();
+    forbidden = (state.status === 'playing' && state.turn === R.BLACK) ? R.forbiddenPoints(state.board, rulesOpts()) : [];
     ghost = null;
     draw();
   }
@@ -319,7 +342,7 @@
     handBtn.textContent = myHand ? '손 내리기 (다음 판 두고 싶어요 ✋)' : '다음 판 두고 싶어요 ✋';
     handBtn.classList.toggle('primary', myHand);
     $('hint').textContent = isPlayer
-      ? '돌을 놓을 자리를 한 번 누르면 미리 보이고, 같은 자리를 다시 누르면 확정돼요. 흑 차례에 ✕ 표시는 금수(3-3, 4-4, 장목)예요.'
+      ? '돌을 놓을 자리를 한 번 누르면 미리 보이고, 같은 자리를 다시 누르면 확정돼요. 흑 차례에 ✕ 표시는 금수 자리예요.'
       : (role === 'spectator' ? '관전 중이에요. 손을 들어 두고 싶다고 알리면 대국이 끝난 뒤 두던 사람이 초대할 수 있어요. 새 대국 링크를 만들면 그곳에서 먼저 들어온 사람과 둘 수 있어요.' : '');
   }
 
@@ -463,7 +486,7 @@
     const p = pointToCell(ev);
     if (!p || state.board[p.y][p.x] !== R.EMPTY) { ghost = null; draw(); return; }
     if (ghost && ghost.x === p.x && ghost.y === p.y) {
-      const f = R.forbidden(state.board, p.x, p.y, myColor);
+      const f = R.forbidden(state.board, p.x, p.y, myColor, rulesOpts());
       if (f) { toast({ '33': '3-3 금수 자리예요.', '44': '4-4 금수 자리예요.', '6': '장목(6목) 금수 자리예요.' }[f]); ghost = null; draw(); return; }
       sendMsg({ type: 'move', x: p.x, y: p.y });
       ghost = null; draw();

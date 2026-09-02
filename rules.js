@@ -12,6 +12,13 @@
   const EMPTY = 0, BLACK = 1, WHITE = 2;
   const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 
+  // 규칙 세트. simple: 흑 3-3만 금지(4-4·장목 허용, 6목 이상도 승리). renju: 3-3·4-4·장목 모두 금지, 흑은 정확히 5목만 승리
+  const PRESETS = {
+    simple: { key: 'simple', name: '3-3만 금지', desc: '흑은 3-3만 둘 수 없어요. 4-4와 6목 이상은 허용돼요.', forbid33: true, forbid44: false, forbidOverline: false },
+    renju:  { key: 'renju',  name: '렌주룰',    desc: '흑은 3-3, 4-4, 장목(6목 이상)을 둘 수 없고 정확히 5목만 승리예요.', forbid33: true, forbid44: true, forbidOverline: true },
+  };
+  const DEFAULT_RULES = PRESETS.renju;
+
   function emptyBoard() {
     return Array.from({ length: SIZE }, () => new Array(SIZE).fill(EMPTY));
   }
@@ -31,14 +38,16 @@
   }
 
   // (x,y)에 color 돌을 놓았을 때 승리하는지. 승리하면 돌 좌표 배열, 아니면 null
-  function checkWin(board, x, y, color) {
+  function checkWin(board, x, y, color, opts) {
+    opts = opts || DEFAULT_RULES;
+    const exactFive = color === BLACK && opts.forbidOverline; // 장목 금지 규칙에서만 흑은 정확히 5
     const prev = board[y][x];
     board[y][x] = color;
     let result = null;
     for (const [dx, dy] of DIRS) {
       const run = runThrough(board, x, y, dx, dy, color);
       const n = run.length;
-      if ((color === BLACK && n === 5) || (color === WHITE && n >= 5)) { result = run; break; }
+      if (exactFive ? n === 5 : n >= 5) { result = run; break; }
     }
     board[y][x] = prev;
     return result;
@@ -109,11 +118,12 @@
   }
 
   // 흑의 금수 판정. 금수면 '33' | '44' | '6', 아니면 null. 백은 항상 null.
-  function forbidden(board, x, y, color) {
+  function forbidden(board, x, y, color, opts) {
     color = color || BLACK;
+    opts = opts || DEFAULT_RULES;
     if (color !== BLACK) return null;
     if (board[y][x] !== EMPTY) return null;
-    if (checkWin(board, x, y, BLACK)) return null; // 5목 완성은 승리
+    if (checkWin(board, x, y, BLACK, opts)) return null; // 5목 완성은 승리
 
     board[y][x] = BLACK;
     let over = false, fours = 0, threes = 0;
@@ -126,20 +136,22 @@
     }
     board[y][x] = EMPTY;
 
-    if (over) return '6';
-    if (fours >= 2) return '44';
-    if (threes >= 2) return '33';
+    if (over && opts.forbidOverline) return '6';
+    if (fours >= 2 && opts.forbid44) return '44';
+    if (threes >= 2 && opts.forbid33) return '33';
     return null;
   }
 
   // 현재 흑 차례에 표시할 금수 자리 목록
-  function forbiddenPoints(board) {
+  function forbiddenPoints(board, opts) {
     const pts = [];
     for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
-      if (board[y][x] === EMPTY) { const f = forbidden(board, x, y, BLACK); if (f) pts.push({ x, y, type: f }); }
+      if (board[y][x] === EMPTY) { const f = forbidden(board, x, y, BLACK, opts); if (f) pts.push({ x, y, type: f }); }
     }
     return pts;
   }
 
-  return { SIZE, EMPTY, BLACK, WHITE, emptyBoard, checkWin, forbidden, forbiddenPoints };
+  function preset(key) { return PRESETS[key] || PRESETS.simple; }
+
+  return { SIZE, EMPTY, BLACK, WHITE, PRESETS, DEFAULT_RULES, preset, emptyBoard, checkWin, forbidden, forbiddenPoints };
 });
