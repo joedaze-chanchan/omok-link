@@ -51,6 +51,25 @@ test('blocks opponent immediate win', () => {
   assert.ok((m.x === 4 && m.y === 7) || (m.x === 9 && m.y === 7), 'should block at an end, got ' + JSON.stringify(m));
 });
 
+test('levels: all three return legal moves and hard blocks a four', () => {
+  const b = boardFrom([
+    '...............',
+    '...............',
+    '...............',
+    '...............',
+    '...............',
+    '...............',
+    '.....O.........',
+    '.....XXXX......',
+  ]);
+  for (const lv of ['easy', 'normal', 'hard']) {
+    const m = AI.chooseMove(b, W, R.PRESETS.renju, lv);
+    assert.ok(m && b[m.y][m.x] === R.EMPTY, lv + ' returns an empty cell');
+  }
+  const h = AI.chooseMove(b, W, R.PRESETS.renju, 'hard');
+  assert.ok((h.x === 4 && h.y === 7) || (h.x === 9 && h.y === 7), 'hard blocks the open four, got ' + JSON.stringify(h));
+});
+
 test('black never picks a forbidden point', () => {
   // (1,3) is a 3-3 for black; make it attractive but forbidden
   const b = boardFrom([

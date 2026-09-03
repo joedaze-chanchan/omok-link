@@ -18,7 +18,7 @@ const AI = require('./ai');
 
 const BOT_ID = 'bot';
 const BOT_NAME = '컴퓨터';
-const BOT_DELAY_MS = 600;
+const CHAT_KEEP = 100; // 방마다 보관하는 채팅 줄 수
 
 const PORT = process.env.PORT || 3000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000; // 마지막 활동 후 24시간 지나면 방 삭제
@@ -55,7 +55,7 @@ function loadRooms() {
     if (!fs.existsSync(DATA_FILE)) return;
     const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     for (const r of raw.rooms || []) {
-      rooms.set(r.id, { id: r.id, players: r.players || [], sockets: new Set(), game: r.game, rematch: new Set(r.rematch || []), hands: new Set(), invite: null, touched: r.touched || Date.now(), gameNo: r.gameNo || 1, everFull: !!r.everFull, rules: r.rules || 'simple' });
+      rooms.set(r.id, { id: r.id, players: r.players || [], sockets: new Set(), game: r.game, rematch: new Set(r.rematch || []), hands: new Set(), invite: null, touched: r.touched || Date.now(), gameNo: r.gameNo || 1, everFull: !!r.everFull, rules: r.rules || 'simple', botLevel: r.botLevel || 'normal', chat: r.chat || [] });
     }
     log('저장된 방 ' + rooms.size + '개 복구');
   } catch (e) { log('방 복구 실패:', e.message); }
@@ -68,7 +68,7 @@ function saveRooms() {
     saveTimer = null;
     try {
       fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-      const out = { rooms: [...rooms.values()].map(r => ({ id: r.id, players: r.players, game: r.game, rematch: [...r.rematch], touched: r.touched, gameNo: r.gameNo, everFull: !!r.everFull, rules: r.rules })) };
+      const out = { rooms: [...rooms.values()].map(r => ({ id: r.id, players: r.players, game: r.game, rematch: [...r.rematch], touched: r.touched, gameNo: r.gameNo, everFull: !!r.everFull, rules: r.rules, botLevel: r.botLevel, chat: r.chat })) };
       fs.writeFileSync(DATA_FILE, JSON.stringify(out));
     } catch (e) { log('방 저장 실패:', e.message); }
   }, 300);
@@ -99,7 +99,7 @@ function newGame(blackId) {
 function getRoom(id) {
   let room = rooms.get(id);
   if (!room) {
-    room = { id, players: [], sockets: new Set(), game: newGame(null), rematch: new Set(), hands: new Set(), invite: null, touched: Date.now(), gameNo: 1, rules: 'simple' };
+    room = { id, players: [], sockets: new Set(), game: newGame(null), rematch: new Set(), hands: new Set(), invite: null, touched: Date.now(), gameNo: 1, rules: 'simple', botLevel: 'normal', chat: [] };
     rooms.set(id, room);
   }
   room.touched = Date.now();
@@ -124,6 +124,7 @@ function publicState(room) {
     room: room.id,
     gameNo: room.gameNo,
     rules: room.rules,
+    botLevel: room.botLevel,
     players: room.players.map(p => ({ id: p.id, name: p.name, bot: p.id === BOT_ID, color: g.blackId === p.id ? Rules.BLACK : Rules.WHITE, online: p.id === BOT_ID || online.has(p.id) })),
     spectators,
     openSeat: room.players.length < 2,
@@ -146,6 +147,20 @@ function broadcast(room) {
   saveRooms();
 }
 
+// ----- 채팅 -----
+function pushChat(room, item) {
+  room.chat.push(item);
+  if (room.chat.length > CHAT_KEEP) room.chat.splice(0, room.chat.length - CHAT_KEEP);
+  const msg = JSON.stringify({ type: 'chat', items: [item] });
+  for (const s of room.sockets) if (s.readyState === 1) s.send(msg);
+  saveRooms();
+}
+function sysChat(room, text) { pushChat(room, { sys: true, text, t: Date.now() }); }
+function nameOfColor(room, color) {
+  const p = room.players.find(p => (room.game.blackId === p.id ? Rules.BLACK : Rules.WHITE) === color);
+  return p ? p.name : (color === Rules.BLACK ? '흑' : '백');
+}
+
 // 컴퓨터 차례면 잠시 뒤에 둔다
 function scheduleBot(room) {
   const g = room.game;
@@ -157,11 +172,11 @@ function scheduleBot(room) {
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
     if (room.game !== gameRef || gameRef.status !== 'playing' || gameRef.turn !== botColor) return;
-    const m = AI.chooseMove(gameRef.board, botColor, Rules.preset(room.rules));
+    const m = AI.chooseMove(gameRef.board, botColor, Rules.preset(room.rules), room.botLevel);
     if (!m) return;
     applyMove(room, botColor, m.x, m.y);
     broadcast(room);
-  }, BOT_DELAY_MS);
+  }, (AI.LEVELS[room.botLevel] || AI.LEVELS.normal).delay);
 }
 
 // 착수 적용. 문제가 있으면 안내 문자열, 정상이면 null
@@ -179,8 +194,10 @@ function applyMove(room, color, x, y) {
   g.moves.push({ x, y, color });
   if (win) {
     g.status = 'ended'; g.winner = color; g.winLine = win; g.endReason = 'five';
+    sysChat(room, nameOfColor(room, color) + '(' + (color === Rules.BLACK ? '흑' : '백') + ') 승리 · ' + g.moves.length + '수');
   } else if (g.moves.length === Rules.SIZE * Rules.SIZE) {
     g.status = 'ended'; g.winner = null; g.endReason = 'draw';
+    sysChat(room, '무승부');
   } else {
     g.turn = color === Rules.BLACK ? Rules.WHITE : Rules.BLACK;
   }
@@ -203,6 +220,7 @@ function seat(room, player) {
     room.game.status = 'playing';
     room.rematch = new Set();
     room.invite = null;
+    sysChat(room, '대국 시작 · ' + nameOfColor(room, Rules.BLACK) + '(흑) 대 ' + nameOfColor(room, Rules.WHITE) + '(백)');
   }
   if (room.botTimer) { clearTimeout(room.botTimer); room.botTimer = null; }
 }
@@ -270,6 +288,7 @@ function handle(ws, msg) {
       seat(room, { id: clientId, name });
     }
     send(ws, { type: 'you', clientId });
+    send(ws, { type: 'chat', items: room.chat, reset: true });
     broadcast(room);
     return;
   }
@@ -288,9 +307,30 @@ function handle(ws, msg) {
     return;
   }
 
+  if (msg.type === 'chat') {
+    const text = String(msg.text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!text) return;
+    const now = Date.now();
+    if (ws.lastChat && now - ws.lastChat < 300) return; // 도배 방지
+    ws.lastChat = now;
+    pushChat(room, { id: ws.clientId, name: ws.name || '익명', role: myColor === Rules.BLACK ? 'b' : (myColor === Rules.WHITE ? 'w' : 's'), text, t: now });
+    return;
+  }
+
+  if (msg.type === 'setBotLevel') {
+    if (myColor === null) return send(ws, { type: 'error', message: '자리에 앉은 사람만 난이도를 바꿀 수 있어요.' });
+    if (g.status === 'playing') return send(ws, { type: 'error', message: '대국 중에는 난이도를 바꿀 수 없어요.' });
+    if (!AI.LEVELS[msg.level]) return;
+    room.botLevel = msg.level;
+    sysChat(room, '컴퓨터 난이도: ' + AI.LEVELS[msg.level].name);
+    broadcast(room);
+    return;
+  }
+
   if (msg.type === 'resign') {
     if (myColor === null || g.status !== 'playing') return;
     g.status = 'ended'; g.winner = myColor === Rules.BLACK ? Rules.WHITE : Rules.BLACK; g.endReason = 'resign';
+    sysChat(room, (ws.name || '익명') + ' 기권');
     broadcast(room);
     return;
   }
@@ -302,6 +342,7 @@ function handle(ws, msg) {
     if (g.status === 'playing') return send(ws, { type: 'error', message: '대국 중에는 규칙을 바꿀 수 없어요.' });
     if (!Rules.PRESETS[msg.rules]) return;
     room.rules = msg.rules;
+    sysChat(room, '규칙 변경: ' + Rules.PRESETS[msg.rules].name);
     broadcast(room);
     return;
   }
@@ -309,6 +350,7 @@ function handle(ws, msg) {
   if (msg.type === 'addBot') {
     if (myColor === null) return send(ws, { type: 'error', message: '자리에 앉은 사람만 컴퓨터를 부를 수 있어요.' });
     if (room.players.length >= 2) return send(ws, { type: 'error', message: '이미 두 자리가 다 찼어요.' });
+    if (AI.LEVELS[msg.level]) room.botLevel = msg.level;
     seat(room, { id: BOT_ID, name: BOT_NAME });
     broadcast(room);
     return;
