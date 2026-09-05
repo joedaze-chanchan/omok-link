@@ -14,8 +14,8 @@
 
   // 규칙 세트. simple: 흑 3-3만 금지(4-4·장목 허용, 6목 이상도 승리). renju: 3-3·4-4·장목 모두 금지, 흑은 정확히 5목만 승리
   const PRESETS = {
-    simple: { key: 'simple', name: '3-3만 금지', desc: '흑은 3-3만 둘 수 없어요. 4-4와 6목 이상은 허용돼요.', forbid33: true, forbid44: false, forbidOverline: false },
-    renju:  { key: 'renju',  name: '렌주룰',    desc: '흑은 3-3, 4-4, 장목(6목 이상)을 둘 수 없고 정확히 5목만 승리예요.', forbid33: true, forbid44: true, forbidOverline: true },
+    simple: { key: 'simple', name: '3-3만 금지', desc: '흑은 연속된 삼 두 개가 동시에 생기는 3-3만 둘 수 없어요. 띈삼은 세지 않고, 4-4와 6목 이상은 허용돼요.', forbid33: true, forbid44: false, forbidOverline: false, brokenThree: false },
+    renju:  { key: 'renju',  name: '렌주룰',    desc: '흑은 3-3(띈삼 포함), 4-4, 장목(6목 이상)을 둘 수 없고 정확히 5목만 승리예요.', forbid33: true, forbid44: true, forbidOverline: true, brokenThree: true },
   };
   const DEFAULT_RULES = PRESETS.renju;
 
@@ -132,7 +132,8 @@
       if (run.length >= 6) { over = true; break; }
       const arr = lineArray(board, x, y, dx, dy, BLACK);
       fours += countFours(arr);
-      if (isOpenThree(arr)) threes++;
+      // brokenThree가 꺼져 있으면 놓은 돌을 포함해 연속된 돌이 정확히 3개인 삼(연속삼)만 센다
+      if (isOpenThree(arr) && (opts.brokenThree || run.length === 3)) threes++;
     }
     board[y][x] = EMPTY;
 
