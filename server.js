@@ -19,6 +19,9 @@ const AI = require('./ai');
 const BOT_ID = 'bot';
 const BOT_NAME = '컴퓨터';
 const CHAT_KEEP = 100; // 방마다 보관하는 채팅 줄 수
+const AVATARS = ['🙂', '😎', '🐱', '🐶', '🦊', '🐼', '🐸', '🦁', '🐯', '🦄', '👻', '🍀'];
+function cleanName(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 12) || '익명'; }
+function cleanAvatar(v) { return AVATARS.includes(v) ? v : AVATARS[0]; }
 
 const PORT = process.env.PORT || 3000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000; // 마지막 활동 후 24시간 지나면 방 삭제
@@ -115,9 +118,9 @@ function colorOf(room, clientId) {
 function publicState(room) {
   const g = room.game;
   const online = new Set([...room.sockets].map(s => s.clientId));
-  const names = new Map([...room.sockets].map(s => [s.clientId, s.name]));
+  const socks = new Map([...room.sockets].map(s => [s.clientId, s]));
   const spectators = [...online].filter(id => !room.players.some(p => p.id === id))
-    .map(id => ({ id, name: names.get(id) || '익명', hand: room.hands.has(id) }))
+    .map(id => ({ id, name: (socks.get(id) && socks.get(id).name) || '익명', avatar: (socks.get(id) && socks.get(id).avatar) || AVATARS[0], hand: room.hands.has(id) }))
     .sort((a, b) => (b.hand - a.hand) || a.name.localeCompare(b.name));
   return {
     type: 'state',
@@ -125,7 +128,7 @@ function publicState(room) {
     gameNo: room.gameNo,
     rules: room.rules,
     botLevel: room.botLevel,
-    players: room.players.map(p => ({ id: p.id, name: p.name, bot: p.id === BOT_ID, color: g.blackId === p.id ? Rules.BLACK : Rules.WHITE, online: p.id === BOT_ID || online.has(p.id) })),
+    players: room.players.map(p => ({ id: p.id, name: p.name, avatar: p.id === BOT_ID ? '🤖' : (p.avatar || AVATARS[0]), bot: p.id === BOT_ID, color: g.blackId === p.id ? Rules.BLACK : Rules.WHITE, online: p.id === BOT_ID || online.has(p.id) })),
     spectators,
     openSeat: room.players.length < 2,
     invite: room.invite ? { from: room.invite.from, fromName: room.invite.fromName, to: room.invite.to, toName: room.invite.toName } : null,
@@ -271,21 +274,22 @@ function handle(ws, msg) {
   if (msg.type === 'join') {
     const roomId = String(msg.room || '').slice(0, 32);
     const clientId = String(msg.clientId || '').slice(0, 64);
-    const name = String(msg.name || '').trim().slice(0, 12) || '익명';
+    const name = cleanName(msg.name);
+    const avatar = cleanAvatar(msg.avatar);
     if (!/^[a-z0-9]+$/.test(roomId) || !clientId) return send(ws, { type: 'error', message: '잘못된 링크예요.' });
 
     const room = getRoom(roomId);
-    ws.room = room; ws.clientId = clientId; ws.name = name;
+    ws.room = room; ws.clientId = clientId; ws.name = name; ws.avatar = avatar;
     log('입장', roomId, name, clientId);
     const wasHere = [...room.sockets].some(s => s.clientId === clientId);
     room.sockets.add(ws);
 
     let player = room.players.find(p => p.id === clientId);
     if (player) {
-      player.name = name;
+      player.name = name; player.avatar = avatar;
     } else if (room.players.length < 2 && !wasHere) {
       // 처음 들어온 사람은 빈자리에 자동으로 앉는다 (이미 관전 중이던 사람은 「오목 두기」로 직접 앉음)
-      seat(room, { id: clientId, name });
+      seat(room, { id: clientId, name, avatar });
     }
     send(ws, { type: 'you', clientId });
     send(ws, { type: 'chat', items: room.chat, reset: true });
@@ -307,13 +311,26 @@ function handle(ws, msg) {
     return;
   }
 
+  if (msg.type === 'profile') {
+    // 이름·캐릭터 변경. 같은 사람이 언제든 바꿀 수 있다
+    const name = cleanName(msg.name), avatar = cleanAvatar(msg.avatar);
+    const before = ws.name;
+    ws.name = name; ws.avatar = avatar;
+    for (const s of room.sockets) if (s.clientId === ws.clientId) { s.name = name; s.avatar = avatar; }
+    const p = room.players.find(p => p.id === ws.clientId);
+    if (p) { p.name = name; p.avatar = avatar; }
+    if (before && before !== name) sysChat(room, before + ' → ' + name + ' 이름 변경');
+    broadcast(room);
+    return;
+  }
+
   if (msg.type === 'chat') {
     const text = String(msg.text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!text) return;
     const now = Date.now();
     if (ws.lastChat && now - ws.lastChat < 300) return; // 도배 방지
     ws.lastChat = now;
-    pushChat(room, { id: ws.clientId, name: ws.name || '익명', role: myColor === Rules.BLACK ? 'b' : (myColor === Rules.WHITE ? 'w' : 's'), text, t: now });
+    pushChat(room, { id: ws.clientId, name: ws.name || '익명', avatar: ws.avatar || AVATARS[0], role: myColor === Rules.BLACK ? 'b' : (myColor === Rules.WHITE ? 'w' : 's'), text, t: now });
     return;
   }
 

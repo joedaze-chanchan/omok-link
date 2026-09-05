@@ -49,6 +49,13 @@
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 4px; }
   header h1 { font-family: "Gowun Batang", "Nanum Myeongjo", serif; font-weight: 700; font-size: 22px; margin: 0; letter-spacing: -.01em; }
   header .room { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+  header .right { display: flex; align-items: center; gap: 8px; }
+  .profile { font: inherit; font-size: 13px; font-weight: 700; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .profile .pen { color: var(--ink-2); font-weight: 400; margin-left: 4px; }
+  .avatars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .avatars button { font-size: 22px; padding: 6px 0; border-radius: 10px; line-height: 1.2; }
+  .avatars button.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); background: var(--ground); }
+  .player .av { font-size: 14px; margin-right: 2px; }
 
   .players { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
   .player { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; min-height: 58px; position: relative; transition: border-color .2s, box-shadow .2s; }
@@ -138,7 +145,10 @@
 <div class="app">
   <header>
     <h1>오목 한판</h1>
-    <div class="room">방 <span id="roomId">—</span></div>
+    <div class="right">
+      <button type="button" class="profile" id="profileBtn" hidden><span id="profileLabel"></span><span class="pen">✎</span></button>
+      <div class="room">방 <span id="roomId">—</span></div>
+    </div>
   </header>
 
   <div class="players">
@@ -227,10 +237,14 @@
 
 <div class="modal" id="nameModal" hidden>
   <form class="card" id="nameForm">
-    <h2>어떻게 불러드릴까요?</h2>
-    <p>상대와 관전자에게 보이는 이름이에요.</p>
+    <h2 id="nameTitle">어떻게 불러드릴까요?</h2>
+    <p>상대와 관전자에게 보이는 이름과 캐릭터예요. 오른쪽 위 이름표를 눌러 언제든 바꿀 수 있어요.</p>
     <input id="nameInput" maxlength="12" placeholder="닉네임" autocomplete="nickname" required>
-    <button class="primary" type="submit">입장하기</button>
+    <div class="avatars" id="avatarGrid"></div>
+    <div class="row">
+      <button type="button" id="nameCancel" hidden>취소</button>
+      <button class="primary" type="submit" id="nameSubmit">입장하기</button>
+    </div>
   </form>
 </div>
 
@@ -248,6 +262,9 @@
   let clientId = qs.get('cid') || stored('omok.cid', '');
   if (!clientId) { clientId = 'c' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); store('omok.cid', clientId); }
   let myName = qs.get('name') || stored('omok.name', '');
+  const AVATARS = ['🙂', '😎', '🐱', '🐶', '🦊', '🐼', '🐸', '🦁', '🐯', '🦄', '👻', '🍀'];
+  let myAvatar = stored('omok.avatar', '');
+  if (!AVATARS.includes(myAvatar)) myAvatar = AVATARS[0];
 
   // ----- DOM -----
   const $ = (id) => document.getElementById(id);
@@ -274,7 +291,7 @@
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
     ws = new WebSocket(proto + location.host + '/ws');
-    ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ type: 'join', room: roomId, clientId, name: myName })); };
+    ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ type: 'join', room: roomId, clientId, name: myName, avatar: myAvatar })); };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'state') { state = msg; onState(); }
@@ -318,7 +335,7 @@
       if (it.sys) { div.className = 'msg sys'; div.textContent = it.text; }
       else {
         div.className = 'msg ' + (it.role || 's') + (it.id === clientId ? ' me' : '');
-        div.innerHTML = '<span class="who">' + escapeHtml(it.name) + '</span><span>' + escapeHtml(it.text) + '</span><span class="time">' + fmtTime(it.t) + '</span>';
+        div.innerHTML = '<span class="who">' + (it.avatar ? it.avatar + ' ' : '') + escapeHtml(it.name) + '</span><span>' + escapeHtml(it.text) + '</span><span class="time">' + fmtTime(it.t) + '</span>';
       }
       chatLog.appendChild(div);
     }
@@ -362,7 +379,7 @@
     el.classList.toggle('empty', !p);
     el.classList.toggle('me', !!p && p.id === clientId);
     el.classList.toggle('turn', state.status === 'playing' && state.turn === color);
-    el.querySelector('.name').textContent = p ? (p.bot ? p.name + ' 🤖 ' + (LEVEL_NAMES[state.botLevel] || '') : p.name) : '기다리는 중…';
+    el.querySelector('.name').textContent = p ? (p.bot ? p.name + ' 🤖 ' + (LEVEL_NAMES[state.botLevel] || '') : (p.avatar || '') + ' ' + p.name) : '기다리는 중…';
     el.querySelector('.sub').innerHTML = p ? '<span class="dot ' + (p.online ? '' : 'off') + '"></span>' + label + (p.online ? '' : ' · 자리 비움') : label;
   }
 
@@ -424,7 +441,7 @@
     box.hidden = state.spectators.length === 0;
     $('watchCount').textContent = state.spectators.length;
     $('watchChips').innerHTML = state.spectators.map(sp =>
-      '<span class="chip' + (sp.hand ? ' hand' : '') + (sp.id === clientId ? ' me' : '') + '">' + escapeHtml(sp.name) + (sp.hand ? ' ✋' : '') + '</span>').join('');
+      '<span class="chip' + (sp.hand ? ' hand' : '') + (sp.id === clientId ? ' me' : '') + '">' + (sp.avatar || '') + ' ' + escapeHtml(sp.name) + (sp.hand ? ' ✋' : '') + '</span>').join('');
   }
 
   function renderInvite() {
@@ -598,13 +615,38 @@
   function toast(text, ms) { toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 2400); }
 
   // ----- 닉네임 → 접속 -----
-  function start() { $('nameModal').hidden = true; connect(); }
-  $('nameForm').addEventListener('submit', (ev) => { ev.preventDefault(); myName = $('nameInput').value.trim().slice(0, 12) || '익명'; store('omok.name', myName); start(); });
+  // ----- 이름·캐릭터 -----
+  let pickedAvatar = myAvatar;
+  const grid = $('avatarGrid');
+  for (const a of AVATARS) { const b = document.createElement('button'); b.type = 'button'; b.textContent = a; b.dataset.av = a; b.addEventListener('click', () => { pickedAvatar = a; paintAvatars(); }); grid.appendChild(b); }
+  function paintAvatars() { for (const b of grid.children) b.classList.toggle('on', b.dataset.av === pickedAvatar); }
+  function renderProfile() { $('profileLabel').textContent = myAvatar + ' ' + myName; $('profileBtn').hidden = !myName; }
+  function openNameModal(editing) {
+    $('nameTitle').textContent = editing ? '이름과 캐릭터 바꾸기' : '어떻게 불러드릴까요?';
+    $('nameSubmit').textContent = editing ? '저장' : '입장하기';
+    $('nameCancel').hidden = !editing;
+    $('nameInput').value = myName; pickedAvatar = myAvatar; paintAvatars();
+    $('nameModal').hidden = false;
+    setTimeout(() => $('nameInput').focus(), 50);
+  }
+  function start() { $('nameModal').hidden = true; renderProfile(); connect(); }
+  let started = false;
+  $('nameForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    myName = $('nameInput').value.trim().slice(0, 12) || '익명'; myAvatar = pickedAvatar;
+    store('omok.name', myName); store('omok.avatar', myAvatar);
+    if (!started) { started = true; start(); return; }
+    $('nameModal').hidden = true; renderProfile();
+    sendMsg({ type: 'profile', name: myName, avatar: myAvatar });
+    toast('이름과 캐릭터를 바꿨어요.');
+  });
+  $('nameCancel').addEventListener('click', () => { $('nameModal').hidden = true; });
+  $('profileBtn').addEventListener('click', () => openNameModal(true));
 
   window.addEventListener('resize', resize);
   resize();
   if (!roomId) { setStatus('잘못된 링크예요.'); return; }
-  if (myName) start(); else { $('nameModal').hidden = false; setTimeout(() => $('nameInput').focus(), 50); }
+  if (myName) { started = true; start(); } else openNameModal(false);
 })();
 </script>
 </body>
